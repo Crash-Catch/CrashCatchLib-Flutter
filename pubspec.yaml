@@ -1,6 +1,6 @@
 name: crashcatchlib_flutter
 description: Official Flutter crash reporting library for Crash Catch
-version: 1.0.0
+version: 1.0.4
 homepage: https://github.com/Crash-Catch/CrashCatchLib-Flutter
 
 environment:

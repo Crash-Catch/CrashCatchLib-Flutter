@@ -34,7 +34,7 @@ class CrashCatch
   String _doLb = "";
   bool _initialisationCompleted = false;
   BuildContext _context;
-  static List<HashMap<String, String>> _crashQueue;
+  static List<HashMap<String, dynamic>> _crashQueue;
 
   CrashCatch(BuildContext buildContext) {
     this._context = buildContext;
@@ -215,10 +215,15 @@ class CrashCatch
     }
     else
       {
+        String cookieString = "SESSIONID=" + this._sessionId;
+        if (this._doLb.length > 0)
+        {
+          cookieString += "; DO-LB=" + this._doLb;
+        }
         requestHeaders = {
           "Content-Type": "application/x-www-form-urlencoded",
           "authorisation-token": this._apiKey,
-          "cookie": "SESSIONID=" + this._sessionId
+          "cookie": cookieString
         };
       }
 
@@ -236,7 +241,7 @@ class CrashCatch
         String cookieString = headers["set-cookie"];
         _parseCookieString(cookieString);
 
-        if (this._sessionId != "") {
+        if (this._sessionId.length != 0) {
           this._initialisationCompleted = true;
 
           if (CrashCatch._crashQueue.length > 0)
@@ -262,18 +267,29 @@ class CrashCatch
   void _parseCookieString(String cookieString)
   {
     List<String> cookies = cookieString.split(";");
+    cookies.addAll(cookieString.split(","));
     for (var i = 0; i < cookies.length; i++)
     {
       String cookie = cookies[i];
       if (cookie.startsWith("SESSIONID"))
       {
         List<String> keyValue = cookie.split("=");
-        this._sessionId = keyValue[1];
+        String value = keyValue[1];
+        if (value.contains(";"))
+        {
+           value = value.substring(0, value.indexOf(";"));
+        }
+        this._sessionId = value.trim();
       }
-      else if (cookie.startsWith("DOLB"))
+      else if (cookie.startsWith("DO-LB"))
       {
         List<String> keyValue = cookie.split("=");
-        this._doLb = keyValue[1];
+        String value = keyValue[1];
+        if (value.contains(";"))
+        {
+          value = value.substring(0, value.indexOf(";"));
+        }
+        this._doLb = value;
       }
     }
   }
