@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:crashcatchlib_flutter/CrashCatch.dart';
+import 'package:crashcatchlib_flutter/crashcatchlib_flutter.dart';
 
 void main() {
   test('adds one to input values', () {
