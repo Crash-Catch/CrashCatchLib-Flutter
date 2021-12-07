@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'dart:developer' as dev;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ import 'package:device_info/device_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import 'dart:convert';
+
 
 enum Severity {
   LOW,
@@ -68,7 +70,7 @@ class CrashCatch
     HashMap requestData = new HashMap<String, dynamic>();
     requestData["ProjectID"] = projectId;
     requestData["DeviceID"] = _deviceId;
-    requestData["AppVersion"] = version;
+    requestData["ProjectVersion"] = version;
     _sendRequest("initialise", requestData);
 
     this._setupUnhandledException();
@@ -77,16 +79,19 @@ class CrashCatch
 
   void reportCrash(Exception exception, Severity severity, {StackTrace stack, Map<String, dynamic> customProperties = const {} }) async
   {
+    dev.log("Sending the exception report to Crash Catch");
     String stacktrace = stack == null ? StackTrace.current.toString() : stack
         .toString();
 
     HashMap<String, String> requestData = await returnPostData(exception, stacktrace, severity, CrashType.HANDLED, customProperties);
 
     if (_initialisationCompleted) {
+      dev.log("sending to crash catch as initialised");
       _sendRequest("crash", requestData);
     }
     else
     {
+      dev.log("Adding to crash queue");
       CrashCatch._crashQueue.add(requestData);
     }
   }
@@ -146,6 +151,7 @@ class CrashCatch
     {
       FlutterErrorDetails exceptionObj = exception;
       requestData["ExceptionType"] = exceptionObj.exception.runtimeType.toString();
+      requestData["ExceptionMessage"] = exceptionObj.exception.toString();
     }
 
     requestData["DeviceID"] = this._deviceId;
@@ -160,8 +166,8 @@ class CrashCatch
     requestData["LineNo"] = decodedStack["LineNo"];
     requestData["ScreenResolution"] = width.toString() + " x " + height.toString();
     requestData["Locale"] = defaultLocale;
-    requestData["OSVersionName"] = osVersion;
-    requestData["APIVersion"] = apiVersion;
+    requestData["OSName"] = osVersion;
+    requestData["OSVersion"] = apiVersion;
 
     if (customProperties.isNotEmpty)
     {
@@ -202,14 +208,17 @@ class CrashCatch
 
   void _sendRequest(String endpoint, HashMap<String, dynamic> requestData) async
   {
-    String _url = "https://engine.crashcatch.com";
+    String _url = "https://engine.crashcatch.com/api";
     String requestUrl = _url + "/" + endpoint;
+    
+    dev.log("Request Data:");
+    dev.log(json.encode(requestData));
 
     Map<String, String> requestHeaders;
 
     if (endpoint == "initialise" || this._sessionId == "") {
       requestHeaders = {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
         "authorisation-token": this._apiKey
       };
     }
@@ -221,16 +230,19 @@ class CrashCatch
           cookieString += "; DO-LB=" + this._doLb;
         }
         requestHeaders = {
-          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Type": "application/json",
           "authorisation-token": this._apiKey,
           "cookie": cookieString
         };
       }
 
     var response = await http.post(Uri.parse(requestUrl),
-      body: requestData,
+      body: json.encode(requestData),
       headers: requestHeaders
     );
+
+    dev.log("Got Crash Catch Response");
+    dev.log(response.toString());
 
     int statusCode = response.statusCode;
     if (statusCode == 200) {
@@ -261,6 +273,7 @@ class CrashCatch
       this._sessionId = "";
       CrashCatch._crashQueue.add(requestData);
     }
+    dev.log("Crash Catch HTTP Status: " + response.statusCode.toString() + " Response: " + response.body);
 
   }
 
