@@ -14,5 +14,5 @@
 ## [1.0.4]
 * Bug fixes for load balancer cookie handling to production servers during pre-release testing
 
-## [1.0.5]
+## [2.0.1]
 * Updated dependencies
