@@ -173,7 +173,7 @@ class CrashCatch
     {
       requestData["CustomProperty"] = jsonEncode(customProperties);
     }
-    return requestData;
+    return requestData ;
   }
 
   HashMap<String, String> _decodeStacktrace(String stack, CrashType crashType) {
@@ -208,7 +208,8 @@ class CrashCatch
 
   void _sendRequest(String endpoint, HashMap<String, dynamic> requestData) async
   {
-    String _url = "https://engine.crashcatch.com/api";
+    //String _url = "https://engine.crashcatch.com/api";
+    String _url = "http://127.0.0.1:6000/api";
     String requestUrl = _url + "/" + endpoint;
     
     dev.log("Request Data:");
