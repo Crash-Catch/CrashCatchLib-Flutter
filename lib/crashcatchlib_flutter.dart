@@ -1,4 +1,5 @@
 library crashcatchlib_flutter;
+import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 import 'dart:convert';
@@ -9,10 +10,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/http.dart';
-import 'package:device_info/device_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import 'dart:convert';
+import 'package:device_info_plus/device_info_plus.dart';
 
 
 enum Severity {
@@ -30,13 +31,13 @@ class CrashCatch
 {
   String _projectId = "";
   String _versionName = "";
-  String _deviceId;
+  String? _deviceId;
   String _apiKey = "";
   String _sessionId = "";
   String _doLb = "";
   bool _initialisationCompleted = false;
-  BuildContext _context;
-  static List<HashMap<String, dynamic>> _crashQueue;
+  late BuildContext _context;
+  static late List<HashMap<String, dynamic>> _crashQueue;
 
   CrashCatch(BuildContext buildContext) {
     this._context = buildContext;
@@ -64,26 +65,26 @@ class CrashCatch
     if (this._deviceId == "")
     {
       this._deviceId = generateRandomString();
-      await prefs.setString("crashcatch_device_id", this._deviceId);
+      await prefs.setString("crashcatch_device_id", this._deviceId!);
     }
 
     HashMap requestData = new HashMap<String, dynamic>();
     requestData["ProjectID"] = projectId;
     requestData["DeviceID"] = _deviceId;
     requestData["ProjectVersion"] = version;
-    _sendRequest("initialise", requestData);
+    _sendRequest("initialise", requestData as HashMap<String, dynamic>);
 
     this._setupUnhandledException();
 
   }
 
-  void reportCrash(Exception exception, Severity severity, {StackTrace stack, Map<String, dynamic> customProperties = const {} }) async
+  void reportCrash(Exception exception, Severity severity, {StackTrace? stack, Map<String, dynamic> customProperties = const {} }) async
   {
     dev.log("Sending the exception report to Crash Catch");
     String stacktrace = stack == null ? StackTrace.current.toString() : stack
         .toString();
 
-    HashMap<String, String> requestData = await returnPostData(exception, stacktrace, severity, CrashType.HANDLED, customProperties);
+    HashMap<String, String?> requestData = await returnPostData(exception, stacktrace, severity, CrashType.HANDLED, customProperties);
 
     if (_initialisationCompleted) {
       dev.log("sending to crash catch as initialised");
@@ -98,7 +99,7 @@ class CrashCatch
 
   void _sendUnhandledCrash(FlutterErrorDetails flutterErrorDetails) async
   {
-    HashMap<String, String> requestData = await returnPostData(flutterErrorDetails, flutterErrorDetails.stack.toString(), Severity.HIGH, CrashType.UNHANDLED, {});
+    HashMap<String, String?> requestData = await returnPostData(flutterErrorDetails, flutterErrorDetails.stack.toString(), Severity.HIGH, CrashType.UNHANDLED, {});
     if (_initialisationCompleted)
     {
       _sendRequest("crash", requestData);
@@ -109,7 +110,7 @@ class CrashCatch
       }
   }
 
-  Future<HashMap<String, String>> returnPostData(Object exception, String stacktrace, Severity severity, CrashType crashType, Map<String, dynamic> customProperties) async
+  Future<HashMap<String, String?>> returnPostData(Object exception, String stacktrace, Severity severity, CrashType crashType, Map<String, dynamic> customProperties) async
   {
     HashMap<String, String> decodedStack = _decodeStacktrace(stacktrace, crashType);
 
@@ -118,12 +119,18 @@ class CrashCatch
     DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     if (Platform.isAndroid) {
       AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      osVersion = androidInfo.version.release;
+      String? version = androidInfo.version.release != null ? androidInfo.version.release : "";
+      osVersion = "Android " + version!;
       apiVersion = androidInfo.version.sdkInt.toString();
     }
     else if (Platform.isIOS) {
       IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-      osVersion = "iOS " + iosInfo.systemVersion;
+      osVersion = "iOS " + iosInfo.utsname.release.toString();
+    }
+    else if (Platform.isWindows)
+    {
+      osVersion = "Windows";
+      apiVersion = Platform.operatingSystemVersion;
     }
 
     int width = MediaQuery
@@ -139,7 +146,7 @@ class CrashCatch
 
     String defaultLocale = Platform.localeName;
 
-    HashMap requestData = new HashMap<String, String>();
+    HashMap requestData = new HashMap<String, String?>();
 
     if (exception is Exception)
     {
@@ -149,7 +156,7 @@ class CrashCatch
     }
     else
     {
-      FlutterErrorDetails exceptionObj = exception;
+      FlutterErrorDetails exceptionObj = exception as FlutterErrorDetails;
       requestData["ExceptionType"] = exceptionObj.exception.runtimeType.toString();
       requestData["ExceptionMessage"] = exceptionObj.exception.toString();
     }
@@ -169,11 +176,13 @@ class CrashCatch
     requestData["OSName"] = osVersion;
     requestData["OSVersion"] = apiVersion;
 
+    print("OS Version '$osVersion', API Version: $apiVersion");
+
     if (customProperties.isNotEmpty)
     {
       requestData["CustomProperty"] = jsonEncode(customProperties);
     }
-    return requestData ;
+    return requestData as FutureOr<HashMap<String, String?>> ;
   }
 
   HashMap<String, String> _decodeStacktrace(String stack, CrashType crashType) {
@@ -190,7 +199,7 @@ class CrashCatch
     HashMap decodedStack = HashMap<String, String>();
     decodedStack["Class"] = classLoc;
     decodedStack["LineNo"] = lineNo;
-    return decodedStack;
+    return decodedStack as HashMap<String, String>;
   }
 
   String _getSeverityString(Severity severity)
@@ -209,7 +218,7 @@ class CrashCatch
   void _sendRequest(String endpoint, HashMap<String, dynamic> requestData) async
   {
     //String _url = "https://engine.crashcatch.com/api";
-    String _url = "http://127.0.0.1:6000/api";
+    String _url = "http://192.168.1.8:6001/api";
     String requestUrl = _url + "/" + endpoint;
     
     dev.log("Request Data:");
@@ -251,7 +260,7 @@ class CrashCatch
       if (endpoint == "initialise") {
         Map<String, String> headers = response.headers;
 
-        String cookieString = headers["set-cookie"];
+        String cookieString = headers["set-cookie"]!;
         _parseCookieString(cookieString);
 
         if (this._sessionId.length != 0) {
