@@ -14,7 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
 import 'dart:convert';
 import 'package:device_info_plus/device_info_plus.dart';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:web_browser_detect/web_browser_detect.dart';
 
 enum Severity {
   LOW,
@@ -58,21 +59,34 @@ class CrashCatch
 
     //Check the app shared preferences to see if the device id has been set, if
     //not generate a random device id string
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
 
+    print("Getting shared pref");
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    print("got shared prefs");
+    print("Getting device id from shared prefs");
     this._deviceId = prefs.getString("crashcatch_device_id") ?? "";
+    print("Device id is ${this._deviceId}");
 
     if (this._deviceId == "")
     {
+      print("generating new device id");
       this._deviceId = generateRandomString();
       await prefs.setString("crashcatch_device_id", this._deviceId!);
+      print("Set device id to ${this._deviceId}");
     }
+
+    print("Setting hashmap");
+    print("Got project id $projectId");
+    print("device id $_deviceId");
+    print("version $version");
 
     HashMap requestData = new HashMap<String, dynamic>();
     requestData["ProjectID"] = projectId;
     requestData["DeviceID"] = _deviceId;
     requestData["ProjectVersion"] = version;
-    _sendRequest("initialise", requestData as HashMap<String, dynamic>);
+    print("calling send request");
+     _sendRequest("initialise", requestData as HashMap<String, dynamic>);
+     print("send request called");
 
     this._setupUnhandledException();
 
@@ -83,6 +97,8 @@ class CrashCatch
     dev.log("Sending the exception report to Crash Catch");
     String stacktrace = stack == null ? StackTrace.current.toString() : stack
         .toString();
+
+    print("got stack trace");
 
     HashMap<String, String?> requestData = await returnPostData(exception, stacktrace, severity, CrashType.HANDLED, customProperties);
 
@@ -112,27 +128,55 @@ class CrashCatch
 
   Future<HashMap<String, String?>> returnPostData(Object exception, String stacktrace, Severity severity, CrashType crashType, Map<String, dynamic> customProperties) async
   {
+    print("about to call decode stack trace");
     HashMap<String, String> decodedStack = _decodeStacktrace(stacktrace, crashType);
+    print("stack decoded");
+
+    HashMap requestData = new HashMap<String, String?>();
 
     String osVersion = "";
     String apiVersion = "";
-    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    if (Platform.isAndroid) {
-      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      String? version = androidInfo.version.release != null ? androidInfo.version.release : "";
-      osVersion = "Android " + version!;
-      apiVersion = androidInfo.version.sdkInt.toString();
-    }
-    else if (Platform.isIOS) {
-      IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-      osVersion = "iOS " + iosInfo.utsname.release.toString();
-    }
-    else if (Platform.isWindows)
+
+    print("checking platform version");
+    if (!kIsWeb)
     {
-      osVersion = "Windows";
-      apiVersion = Platform.operatingSystemVersion;
+      if (Platform.isAndroid) {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        String? version = androidInfo.version.release != null ? androidInfo.version.release : "";
+        osVersion = "Android " + version!;
+        apiVersion = androidInfo.version.sdkInt.toString();
+      }
+      else if (Platform.isIOS) {
+        osVersion = Platform.operatingSystem;
+        apiVersion = Platform.operatingSystemVersion;
+      }
+      else if (Platform.isWindows)
+      {
+        osVersion = "Windows";
+        apiVersion = Platform.operatingSystemVersion;
+      }
+    }
+    else
+    {
+      print("Getting web platform information");
+      osVersion = "N/A";
+      final Browser browserDetails = Browser();
+
+      String browser = browserDetails.browser;
+      String? browserVersion = browserDetails.version;
+
+      requestData["Browser"] = browser;
+      requestData["BrowserVersion"] = browserVersion;
+      String height = MediaQuery.of(_context).size.height.toString();
+      String width = MediaQuery.of(_context).size.width.toString();
+
+      requestData["BrowserWidthHeight"] = width + " x " + height;
+
     }
 
+    print("Checked platform specific stuff");
+    print("Getting width and height");
     int width = MediaQuery
         .of(_context)
         .size
@@ -143,10 +187,10 @@ class CrashCatch
         .size
         .height
         .ceil();
+    print("got width and height");
+    String defaultLocale = !kIsWeb ? Platform.localeName : "N/A";
+    print("Got locale $defaultLocale}");
 
-    String defaultLocale = Platform.localeName;
-
-    HashMap requestData = new HashMap<String, String?>();
 
     if (exception is Exception)
     {
@@ -171,7 +215,10 @@ class CrashCatch
 
     requestData["ClassFile"] = decodedStack["Class"];
     requestData["LineNo"] = decodedStack["LineNo"];
-    requestData["ScreenResolution"] = width.toString() + " x " + height.toString();
+    if (!kIsWeb)
+    {
+      requestData["ScreenResolution"] = width.toString() + " x " + height.toString();
+    }
     requestData["Locale"] = defaultLocale;
     requestData["OSName"] = osVersion;
     requestData["OSVersion"] = apiVersion;
@@ -186,15 +233,56 @@ class CrashCatch
   }
 
   HashMap<String, String> _decodeStacktrace(String stack, CrashType crashType) {
+    print("split stack by line");
     List<String> stackLines = stack.split("\n");
+    print("stack successfully split");
 
-    int stackLineIndex = crashType == CrashType.HANDLED ? 1 : 0;
+    String classLoc = "";
+    String lineNo = "";
 
-    String firstLineOfStack = stackLines[stackLineIndex].replaceAll("package:", "");
-    int startOfClassLoc = firstLineOfStack.indexOf("(");
-    int startOfLineNumber = firstLineOfStack.indexOf(":", startOfClassLoc);
-    String classLoc = firstLineOfStack.substring(startOfClassLoc+1, startOfLineNumber);
-    String lineNo = firstLineOfStack.substring(startOfLineNumber+1, firstLineOfStack.indexOf(":", startOfLineNumber+1));
+    if (!kIsWeb) {
+      int stackLineIndex = crashType == CrashType.HANDLED ? 1 : 0;
+      print("stack line index is $stackLineIndex");
+      print("stac trace is below");
+      print(stack);
+
+      String firstLineOfStack = stackLines[stackLineIndex].replaceAll(
+          "package:", "");
+      print("got first line of stack at $firstLineOfStack");
+      int startOfClassLoc = firstLineOfStack.indexOf("(");
+      print("start of class loc $startOfClassLoc");
+      int startOfLineNumber = firstLineOfStack.indexOf(":", startOfClassLoc);
+      print("start of line number $startOfLineNumber");
+      classLoc = firstLineOfStack.substring(
+          startOfClassLoc + 1, startOfLineNumber);
+      print("class log $classLoc");
+      lineNo = firstLineOfStack.substring(startOfLineNumber + 1,
+          firstLineOfStack.indexOf(":", startOfLineNumber + 1));
+      print("line no $lineNo");
+    }
+    else
+    {
+      int stackLineIndex = 0;
+      for (int i = 0; i < stackLines.length; i++) {
+          if (stackLines[i].indexOf('dart-sdk') == -1 && stackLines[i].indexOf('crashcatchlib') == -1)
+          {
+            stackLineIndex = i;
+            break;
+          }
+      }
+
+      String firstLineOfStack = stackLines[stackLineIndex].replaceAll(
+          "package:", "");
+      print("got first line of stack at $firstLineOfStack");
+      int startOfClassLoc = firstLineOfStack.indexOf("/");
+      int startOfLineNumber = firstLineOfStack.indexOf(' ', startOfClassLoc) +1;
+      int endOfLineNumber = firstLineOfStack.indexOf(":", startOfClassLoc);
+      print("Last index of space is: ${firstLineOfStack.indexOf(' ', startOfClassLoc)}");
+      classLoc = firstLineOfStack.substring(startOfClassLoc + 1, firstLineOfStack.indexOf(' ', startOfClassLoc));
+      print("class log $classLoc");
+      lineNo = firstLineOfStack.substring(startOfLineNumber, endOfLineNumber);
+      print("line no $lineNo");
+    }
 
     HashMap decodedStack = HashMap<String, String>();
     decodedStack["Class"] = classLoc;
@@ -217,16 +305,15 @@ class CrashCatch
 
   void _sendRequest(String endpoint, HashMap<String, dynamic> requestData) async
   {
+    print("send request called with endpoint $endpoint");
     //String _url = "https://engine.crashcatch.com/api";
     String _url = "http://192.168.1.8:6001/api";
     String requestUrl = _url + "/" + endpoint;
-    
-    dev.log("Request Data:");
-    dev.log(json.encode(requestData));
 
     Map<String, String> requestHeaders;
 
     if (endpoint == "initialise" || this._sessionId == "") {
+      print("Initialising with ${this._apiKey}");
       requestHeaders = {
         "Content-Type": "application/json",
         "authorisation-token": this._apiKey
@@ -234,34 +321,53 @@ class CrashCatch
     }
     else
       {
+        print ("Session id ${this._sessionId}");
         String cookieString = "SESSIONID=" + this._sessionId;
         if (this._doLb.length > 0)
         {
           cookieString += "; DO-LB=" + this._doLb;
         }
+        print("Got Cookie String $cookieString");
         requestHeaders = {
           "Content-Type": "application/json",
           "authorisation-token": this._apiKey,
+          "session_id": this._sessionId,
           "cookie": cookieString
         };
       }
 
+    print("Sending request to $requestUrl");
     var response = await http.post(Uri.parse(requestUrl),
       body: json.encode(requestData),
       headers: requestHeaders
     );
 
-    dev.log("Got Crash Catch Response");
-    dev.log(response.toString());
-
+    print("got response");
+    print("getting status code");
     int statusCode = response.statusCode;
+    print ("got status code $statusCode");
     if (statusCode == 200) {
 
       if (endpoint == "initialise") {
         Map<String, String> headers = response.headers;
 
-        String cookieString = headers["set-cookie"]!;
-        _parseCookieString(cookieString);
+        print("getting set-cookie cookie string");
+        print(headers);
+        if (!kIsWeb)
+        {
+          String cookieString = headers["set-cookie"]!;
+          print("got cookie string $cookieString");
+          print("parsing the cookie string");
+          _parseCookieString(cookieString);
+          print("parsing cookie string completed");
+        }
+        else
+        {
+          print("getting session id from header");
+
+            this._sessionId = headers["session_id"]!;
+            print("session id is ${this._sessionId}");
+        }
 
         if (this._sessionId.length != 0) {
           this._initialisationCompleted = true;
@@ -283,17 +389,20 @@ class CrashCatch
       this._sessionId = "";
       CrashCatch._crashQueue.add(requestData);
     }
-    dev.log("Crash Catch HTTP Status: " + response.statusCode.toString() + " Response: " + response.body);
 
   }
 
   void _parseCookieString(String cookieString)
   {
+    print("Parsing cookie string function");
     List<String> cookies = cookieString.split(";");
+    print("split the cookie string successfully");
     cookies.addAll(cookieString.split(","));
+    print("added ${cookies.length} cookies to cookie jar");
     for (var i = 0; i < cookies.length; i++)
     {
       String cookie = cookies[i];
+      print("processing cookie $cookie");
       if (cookie.startsWith("SESSIONID"))
       {
         List<String> keyValue = cookie.split("=");
