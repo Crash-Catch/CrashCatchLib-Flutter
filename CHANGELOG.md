@@ -16,3 +16,8 @@
 
 ## [2.0.1]
 * Updated dependencies
+
+## [2.1.1]
+* Fixed issue where library was treated as legacy as wasn't fully null type safe
+* Added support for additional platforms that are in stable release by flutter (Android, iOS, Windows and Web)
+* Removed some unnecessary logging

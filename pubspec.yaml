@@ -1,10 +1,10 @@
 name: crashcatchlib_flutter
 description: Official Flutter crash reporting library for Crash Catch
-version: 2.0.1
+version: 2.1.1
 homepage: https://github.com/Crash-Catch/CrashCatchLib-Flutter
 
 environment:
-  sdk: ">=2.7.0 <3.0.0"
+  sdk: '>=2.12.0 <3.0.0'
   flutter: ">=1.17.0"
 
 dependencies:
@@ -14,6 +14,8 @@ dependencies:
   http: ^0.13.0
   device_info: ^2.0.0
   shared_preferences: ^2.0.13
+  device_info_plus: ^3.2.1
+  web_browser_detect: ^2.0.2
 
 dev_dependencies:
   flutter_test:

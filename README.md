@@ -1,7 +1,8 @@
 <img src="https://crashcatch.com/images/logo.png" width="150">
 
 # Introduction
-The Flutter Crash Catch Library allows you to monitor crash and error reports across your Flutter projects running on Android and iOS Platforms on on the crash and error reporting service Crash Catch (https://crashcatch.com). 
+The Flutter Crash Catch Library allows you to monitor crash and error reports across your Flutter projects 
+running on Android, iOS, Windows Desktop and Web and report crashes and errors to Crash Catch (https://crashcatch.com). 
 
 # Installing
 The first thing to do is  to add the Crash Catch library to your pubspec.yaml file under the dependencies. An example is below, ensure that the version number is the latest version number that is shown on the GitHub repositories tags. 
@@ -10,9 +11,8 @@ The first thing to do is  to add the Crash Catch library to your pubspec.yaml fi
 dependencies:
   flutter:
     sdk: flutter
-	crashcatchlib_flutter: ^1.0.0.0
+	crashcatchlib_flutter: ^2.1.1
 ```
-Replace 1.0.0.0 with the latest GitHub tag. 
 
 Then run the Pub get command to update the dependencies as below:
 ```
