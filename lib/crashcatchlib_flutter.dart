@@ -25,13 +25,13 @@ enum CrashType {
 
 class CrashCatch
 {
-  String _projectId = "";
-  String _versionName = "";
-  String? _deviceId;
-  String _apiKey = "";
-  String _sessionId = "";
-  String _doLb = "";
-  bool _initialisationCompleted = false;
+  static String _projectId = "";
+  static String _versionName = "";
+  static String? _deviceId;
+  static String _apiKey = "";
+  static String _sessionId = "";
+  static String _doLb = "";
+  static bool _initialisationCompleted = false;
   late BuildContext _context;
   static late List<HashMap<String, dynamic>> _crashQueue;
 
@@ -48,26 +48,30 @@ class CrashCatch
 
   void initialiseCrashCatch(String projectId, String apiKey, String version) async
   {
-    this._projectId = projectId;
-    this._apiKey = apiKey;
-    this._versionName = version;
+    print("Initialising Crash Catch");
+    _projectId = projectId;
+    _apiKey = apiKey;
+    _versionName = version;
 
     //Check the app shared preferences to see if the device id has been set, if
     //not generate a random device id string
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    this._deviceId = prefs.getString("crashcatch_device_id") ?? "";
+    _deviceId = prefs.getString("crashcatch_device_id") ?? "";
 
-    if (this._deviceId == "")
+    if (_deviceId == "")
     {
-      this._deviceId = generateRandomString();
-      await prefs.setString("crashcatch_device_id", this._deviceId!);
+      _deviceId = generateRandomString();
+      prefs.setString("crashcatch_device_id", _deviceId!);
     }
+
 
     HashMap requestData = new HashMap<String, dynamic>();
     requestData["ProjectID"] = projectId;
     requestData["DeviceID"] = _deviceId;
     requestData["ProjectVersion"] = version;
+
+
      _sendRequest("initialise", requestData as HashMap<String, dynamic>);
 
     this._setupUnhandledException();
@@ -76,16 +80,19 @@ class CrashCatch
 
   void reportCrash(Exception exception, Severity severity, {StackTrace? stack, Map<String, dynamic> customProperties = const {} }) async
   {
+    print("Reporting Crash");
     String stacktrace = stack == null ? StackTrace.current.toString() : stack
         .toString();
 
     HashMap<String, String?> requestData = await returnPostData(exception, stacktrace, severity, CrashType.HANDLED, customProperties);
 
     if (_initialisationCompleted) {
+      print("Initialisation completed, sending request");
       _sendRequest("crash", requestData);
     }
     else
     {
+      print("Initialisation not completed added to queue");
       CrashCatch._crashQueue.add(requestData);
     }
   }
@@ -111,7 +118,7 @@ class CrashCatch
 
     String osVersion = "";
     String apiVersion = "";
-
+    requestData["DeviceId"] = _deviceId;
     if (!kIsWeb)
     {
       if (Platform.isAndroid) {
@@ -141,6 +148,7 @@ class CrashCatch
 
       requestData["Browser"] = browser;
       requestData["BrowserVersion"] = browserVersion;
+
       String height = MediaQuery.of(_context).size.height.toString();
       String width = MediaQuery.of(_context).size.width.toString();
 
@@ -174,13 +182,13 @@ class CrashCatch
       requestData["ExceptionMessage"] = exceptionObj.exception.toString();
     }
 
-    requestData["DeviceID"] = this._deviceId;
+    requestData["DeviceID"] = _deviceId;
     requestData["Stacktrace"] = stacktrace;
     requestData["Severity"] = _getSeverityString(severity);
     requestData["CrashType"] = crashType == CrashType.HANDLED ? "Handled" : "Unhandled";
     requestData["DeviceType"] = "Flutter";
-    requestData["ProjectID"] = this._projectId;
-    requestData["VersionName"] = this._versionName;
+    requestData["ProjectID"] = _projectId;
+    requestData["VersionName"] = _versionName;
 
     requestData["ClassFile"] = decodedStack["Class"];
     requestData["LineNo"] = decodedStack["LineNo"];
@@ -268,52 +276,74 @@ class CrashCatch
     String requestUrl = _url + "/" + endpoint;
 
     Map<String, String> requestHeaders;
+    if (requestData["DeviceID"] == null) {
+      requestData["DeviceID"] = _deviceId;
+    }
 
-    if (endpoint == "initialise" || this._sessionId == "") {
-
+    if (endpoint == "initialise") {
       requestHeaders = {
         "Content-Type": "application/json",
-        "authorisation-token": this._apiKey
+        "authorisation-token": _apiKey
       };
+
+      if (_sessionId.length != 0)
+      {
+        print("The initialisation session id header is being set to: " + _sessionId);
+        requestHeaders["session_id"] = _sessionId;
+      }
+      else
+      {
+        print("The initialisation session id is not set so no header being sent");
+      }
     }
     else
+    {
+      String cookieString = "SESSIONID=" + _sessionId;
+      if (_doLb.length > 0)
       {
-        String cookieString = "SESSIONID=" + this._sessionId;
-        if (this._doLb.length > 0)
-        {
-          cookieString += "; DO-LB=" + this._doLb;
-        }
-        requestHeaders = {
-          "Content-Type": "application/json",
-          "authorisation-token": this._apiKey,
-          "session_id": this._sessionId,
-          "cookie": cookieString
-        };
+        cookieString += "; DO-LB=" + _doLb;
       }
+      requestHeaders = {
+        "Content-Type": "application/json",
+        "authorisation-token": _apiKey,
+        "session_id": _sessionId,
+        "cookie": cookieString
+      };
+    }
+    print("Sending request with session id: " + requestHeaders["session_id"].toString());
+    print("Request Headers");
+    print(requestHeaders);
 
     var response = await http.post(Uri.parse(requestUrl),
       body: json.encode(requestData),
       headers: requestHeaders
     );
 
+
     int statusCode = response.statusCode;
+    print("Endpoint $endpoint status code is $statusCode");
     if (statusCode == 200) {
 
       if (endpoint == "initialise") {
         Map<String, String> headers = response.headers;
 
-        if (!kIsWeb)
+        if (kIsWeb)
         {
+          print("Initialising session id from cookie as web device");
           String cookieString = headers["set-cookie"]!;
           _parseCookieString(cookieString);
         }
         else
         {
-            this._sessionId = headers["session_id"]!;
-        }
+          print("Initialising session id from header. Headers below");
+          print(headers);
+            _sessionId = headers["session_id"]!;
+            print("The session id is:" + _sessionId);
 
-        if (this._sessionId.length != 0) {
-          this._initialisationCompleted = true;
+        }
+        print("Session id is " + _sessionId);
+        if (_sessionId.length != 0 && _deviceId != null) {
+          _initialisationCompleted = true;
 
           if (CrashCatch._crashQueue.length > 0)
           {
@@ -328,8 +358,7 @@ class CrashCatch
     }
     else
     {
-      this._initialisationCompleted = false;
-      this._sessionId = "";
+      _initialisationCompleted = false;
       CrashCatch._crashQueue.add(requestData);
     }
 
@@ -352,7 +381,7 @@ class CrashCatch
         {
            value = value.substring(0, value.indexOf(";"));
         }
-        this._sessionId = value.trim();
+        _sessionId = value.trim();
       }
       else if (cookie.startsWith("DO-LB"))
       {
@@ -362,7 +391,7 @@ class CrashCatch
         {
           value = value.substring(0, value.indexOf(";"));
         }
-        this._doLb = value;
+        _doLb = value;
       }
     }
   }
